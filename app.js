@@ -13,6 +13,10 @@ const { initializeDatabase } = require('./models/index');
 dotenv.config();
 
 const app = express();
+const bodyParser = require('body-parser');
+
+app.post('/webhook/stripe', bodyParser.raw({ type: 'application/json' }), require('./routes/webhookRoutes'));
+
 app.use(express.json());
 
 // Routes

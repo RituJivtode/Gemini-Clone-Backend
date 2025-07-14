@@ -26,6 +26,64 @@ exports.subscribePro = async (req, res) => {
   }
 };
 
+
+exports.stripeWebhook = async (req, res) => {
+    try {
+        const sig = req.headers['stripe-signature'];
+
+        let event;
+        try {
+            event = stripe.webhooks.constructEvent(
+            req.body,
+            sig,
+            process.env.STRIPE_WEBHOOK_SECRET
+            );
+        } catch (err) {
+            console.error('Webhook signature error:', err.message);
+            return res.status(400).send(`Webhook Error: ${err.message}`);
+        }
+        console.log('event.data.object 45: ', event.data.object)
+        console.log('event.type 46:', event.type)
+
+        //Handle subscription success
+        if (event.type === 'checkout.session.completed') {
+            const session = event.data.object;
+            const userId = session.metadata?.userId;
+
+            if (userId) {
+            await Users.update({ subscriptionTier: 'PRO' }, { where: { id: userId } });
+            console.log(`User ${userId} upgraded to PRO`);
+            }
+        }
+
+        // Handle subscription cancellation
+        if (event.type === 'customer.subscription.deleted') {
+          const subscription = event.data.object;
+          const userId = subscription.metadata?.userId;
+
+          if (userId) {
+            await Users.update({ subscriptionTier: 'BASIC' }, { where: { id: userId } });
+            console.log(`User ${userId} downgraded to BASIC due to cancellation`);
+          }
+        }
+
+        // Handle payment failure
+        if (event.type === 'invoice.payment_failed') {
+          const subscription = event.data.object.subscription;
+          const userId = event.data.object?.lines?.data?.[0]?.metadata?.userId;
+
+          if (userId) {
+            await Users.update({ subscriptionTier: 'BASIC' }, { where: { id: userId } });
+            console.log(`Payment failed. User ${userId} downgraded to BASIC`);
+          }
+        }
+        return res.status(200).send('Webhook received');   
+    } catch (error) {
+        console.error('Error in stripe webhook payment event :', error.message);
+        return res.status(500).json({ success: false, message: 'Server error' });
+    }
+};
+
 exports.getSubscriptionStatus = async (req, res) => {
   try {
     console.log('req.userId 31:', req.userId)
